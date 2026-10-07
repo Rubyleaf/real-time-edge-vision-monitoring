@@ -4,11 +4,17 @@ import time
 
 import cv2
 
+from edge_monitor.detector import PersonDetector
+
 
 def play_video(source: str) -> None:
     capture = cv2.VideoCapture(source)
+
+    # raise an error if the video source cannot be opened
     if not capture.isOpened():
         raise RuntimeError(f"Could not open video source: {source}")
+
+    detector = PersonDetector()
 
     frame_count = 0
     start_time = time.perf_counter()
@@ -20,6 +26,9 @@ def play_video(source: str) -> None:
                 break
 
             frame_count += 1
+
+            result = detector.predict(frame)
+            frame = result.plot()
             elapsed = time.perf_counter() - start_time
             fps = frame_count / elapsed if elapsed > 0 else 0.0
 
