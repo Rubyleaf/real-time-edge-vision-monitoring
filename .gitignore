@@ -13,3 +13,6 @@ data/
 weights/
 runs/
 logs/
+
+*.pt
+bus.jpg
