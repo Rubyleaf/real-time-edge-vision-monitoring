@@ -4,11 +4,11 @@ import time
 
 import cv2
 
-from edge_monitor.detector import PersonDetector
-
 import numpy as np
 
+from edge_monitor.detector import PersonDetector
 from edge_monitor.zone import point_in_zone
+from edge_monitor.event_log import log_intrusion
 
 def play_video(source: str) -> None:
     capture = cv2.VideoCapture(source)
@@ -56,19 +56,19 @@ def play_video(source: str) -> None:
             frame = result.plot()
 
             intrusion_detected = False
-
-            entered_track_ids = []
+            entered_events = []
 
             # Check if any detected person is inside the zone
             if result.boxes is not None:
                 boxes_xyxy = result.boxes.xyxy.cpu().tolist()
+                confidences = result.boxes.conf.cpu().tolist()
 
                 if result.boxes.id is not None:
                     track_ids = result.boxes.id.int().cpu().tolist()
                 else:
                     track_ids = [None] * len(boxes_xyxy)
 
-                for coords, track_id in zip(boxes_xyxy, track_ids):
+                for coords, track_id, confidence in zip(boxes_xyxy, track_ids, confidences):
                     x1, y1, x2, y2 = coords
                     center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
                     inside = point_in_zone(center, zone)
@@ -83,11 +83,17 @@ def play_video(source: str) -> None:
                         was_inside = previous_inside.get(track_id, False)
 
                         if inside and not was_inside:
-                            entered_track_ids.append(track_id)
+                            entered_events.append((track_id, coords, center, confidence))
 
                         previous_inside[track_id] = inside
 
-            for track_id in entered_track_ids:
+            for track_id, bbox, center, confidence in entered_events:
+                log_intrusion(
+                    track_id=track_id,
+                    bbox=bbox,
+                    center=center,
+                    confidence=confidence,
+                )
                 print(f"INTRUSION entered: track_id={track_id}")
             
             cv2.polylines(frame, [zone_points], isClosed=True, color=(0, 0, 255), thickness=2)
