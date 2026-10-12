@@ -39,26 +39,56 @@ def play_video(source: str) -> None:
     cv2.moveWindow(window_name, 100, 100) # Move the window to a specific position on the screen
 
     try:
+        previous_inside: dict[int, bool] = {}
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
-
+                
             frame_count += 1
 
-            result = detector.predict(frame)
+            result = detector.track(frame)
+
+            # debug: print the track IDs of detected objects
+            # if result.boxes is not None and result.boxes.id is not None:
+            #     print("Track IDs:", result.boxes.id.int().cpu().tolist())
+
             frame = result.plot()
 
             intrusion_detected = False
 
-            for box in result.boxes: # result.boxes 是YOLO 回傳的偵測框集合
-                x1, y1, x2, y2 = box.xyxy[0].cpu().tolist() # .cpu().tolist() 把 GPU 上的座標轉成一般 Python 數值，方便計算和交給 OpenCV
-                center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+            entered_track_ids = []
 
-                cv2.circle(frame, center, 8, (255, 0, 0), -1)
+            # Check if any detected person is inside the zone
+            if result.boxes is not None:
+                boxes_xyxy = result.boxes.xyxy.cpu().tolist()
 
-                if point_in_zone(center, zone):
-                    intrusion_detected = True            
+                if result.boxes.id is not None:
+                    track_ids = result.boxes.id.int().cpu().tolist()
+                else:
+                    track_ids = [None] * len(boxes_xyxy)
+
+                for coords, track_id in zip(boxes_xyxy, track_ids):
+                    x1, y1, x2, y2 = coords
+                    center = (int((x1 + x2) / 2), int((y1 + y2) / 2))
+                    inside = point_in_zone(center, zone)
+
+                    if inside:
+                        intrusion_detected = True
+
+                    # Draw a circle at the center of the detected person
+                    cv2.circle(frame, center, 8, (255, 0, 0), -1)
+
+                    if track_id is not None:
+                        was_inside = previous_inside.get(track_id, False)
+
+                        if inside and not was_inside:
+                            entered_track_ids.append(track_id)
+
+                        previous_inside[track_id] = inside
+
+            for track_id in entered_track_ids:
+                print(f"INTRUSION entered: track_id={track_id}")
             
             cv2.polylines(frame, [zone_points], isClosed=True, color=(0, 0, 255), thickness=2)
             elapsed = time.perf_counter() - start_time
@@ -81,7 +111,7 @@ def play_video(source: str) -> None:
                     (0, 0, 255),
                     3,
                 )
-                print("INTRUSION detected")            
+                # print("INTRUSION detected")            
 
             cv2.putText(
                 display_frame,

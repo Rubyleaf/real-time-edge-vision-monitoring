@@ -16,3 +16,13 @@ class PersonDetector:
             classes=[0],
             verbose=False,
         )[0]
+
+    def track(self, frame):
+        return self.model.track(
+            source=frame,
+            device=0,
+            imgsz=640,
+            classes=[0],
+            persist=True,
+            verbose=False,
+        )[0]
