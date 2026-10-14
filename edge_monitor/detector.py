@@ -22,7 +22,9 @@ class PersonDetector:
             source=frame,
             device=0,
             imgsz=640,
+            quantize=32, # Quantize the model to 32-bit precision for faster inference
             classes=[0],
+            tracker="bytetrack.yaml", # Use the ByteTrack tracker for tracking detected persons
             persist=True,
             verbose=False,
         )[0]

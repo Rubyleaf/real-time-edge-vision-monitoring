@@ -5,6 +5,7 @@ import time
 import cv2
 
 import numpy as np
+import torch
 
 from edge_monitor.detector import PersonDetector
 from edge_monitor.zone import point_in_zone
@@ -39,6 +40,7 @@ def play_video(source: str) -> None:
     cv2.moveWindow(window_name, 100, 100) # Move the window to a specific position on the screen
 
     try:
+        inference_latencies_ms = []
         previous_inside: dict[int, bool] = {}
         while True:
             ok, frame = capture.read()
@@ -47,7 +49,16 @@ def play_video(source: str) -> None:
                 
             frame_count += 1
 
-            result = detector.track(frame)
+            torch.cuda.synchronize() # Wait for all CUDA kernels to finish before measuring inference time
+            inference_start = time.perf_counter() # Start measuring inference time
+
+            result = detector.track(frame) # Run person detection and tracking on the current frame
+
+            torch.cuda.synchronize() # Wait for the inference to finish before measuring the time
+            inference_ms = (time.perf_counter() - inference_start) * 1000 # time.perf_counter() returns the time in seconds, so we multiply by 1000 to convert to milliseconds
+
+            if frame_count > 10:  # 前 10 幀作為 warm-up，不納入統計
+                inference_latencies_ms.append(inference_ms)
 
             # debug: print the track IDs of detected objects
             # if result.boxes is not None and result.boxes.id is not None:
@@ -131,10 +142,16 @@ def play_video(source: str) -> None:
 
             cv2.imshow(window_name, display_frame)
             
-            if cv2.waitKey(30) & 0xFF == ord("q"):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
         capture.release()
         cv2.destroyAllWindows()
 
     print(f"Displayed {frame_count} frames in {time.perf_counter() - start_time:.2f}s")
+    if inference_latencies_ms:
+        print(
+            "track() latency after warm-up: "
+            f"median={np.median(inference_latencies_ms):.1f} ms, "
+            f"p95={np.percentile(inference_latencies_ms, 95):.1f} ms"
+        )
